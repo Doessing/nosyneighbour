@@ -595,7 +595,10 @@ function renderEntryCards(container, d) {
       </td></tr>
       <tr><td>Samlet pant (est.)</td><td>${fmt(Math.round(totalDebt))} kr.</td></tr>
       <tr><td>Friværdi (est.)</td><td style="color:${frivaerdiColor};font-weight:700">${fmt(Math.round(frivaerdi))} kr.${frivaerdiPct !== null ? ` <span style="color:#6b7280;font-weight:400">(${frivaerdiPct}%)</span>` : ''}</td></tr>
-    ` : '';
+    ` : `
+      <tr><td>Samlet pant</td><td style="color:#6b7280;font-style:italic">— Ingen gæld —</td></tr>
+      <tr><td>Friværdi</td><td style="color:#166534;font-weight:700">${fmt(v.ejendomsvaerdi)} kr. <span style="color:#6b7280;font-weight:400">(100%)</span></td></tr>
+    `;
     container.appendChild(html(`
       <div class="card">
         <div class="card-title">Vurdering (${v.vurderingsdato})</div>
