@@ -272,6 +272,16 @@
     }
     .history-clear:hover { background: #fef2f2; }
 
+    /* ── Sidebar footer ── */
+    .sidebar-footer {
+      padding: 6px 14px;
+      font-size: 10px;
+      color: #c0c0c0;
+      text-align: center;
+      border-top: 1px solid #f0f0f0;
+      flex-shrink: 0;
+    }
+
     /* ── Dark mode ── */
     [data-theme="dark"] body { background: #1a1a2e; color: #e0e0e0; }
     [data-theme="dark"] #sidebar { background: #16213e; box-shadow: 2px 0 8px rgba(0,0,0,.4); }
@@ -318,6 +328,7 @@
     [data-theme="dark"] .leaflet-popup-content-wrapper { background: #1e293b; color: #e0e0e0; }
     [data-theme="dark"] .leaflet-popup-tip { background: #1e293b; }
     [data-theme="dark"] .popup-owners { color: #d1d5db; }
+    [data-theme="dark"] .sidebar-footer { color: #4b5563; border-top-color: #2d3748; }
   </style>
   <script>
     // Apply theme before render to avoid flash
@@ -343,6 +354,7 @@
       Søg på en adresse eller klik på kortet.<br>Op til 10 adresser ad gangen.
     </div>
   </div>
+  <div class="sidebar-footer">Dev history-and-darkmode v0.0.0.2</div>
 </div>
 
 <div id="map"></div>
