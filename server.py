@@ -6,6 +6,7 @@ Serves a map-based UI, a JSON REST API, and an MCP server at POST /mcp.
 
 import logging
 import os
+import subprocess
 from contextlib import asynccontextmanager
 
 import requests
@@ -23,8 +24,34 @@ log = logging.getLogger(__name__)
 
 _client = TinglysningClient()
 
+
+def _git_version() -> str:
+    """Return a short 'sha branch date' string for injection into the HTML.
+
+    Best-effort — returns 'unknown' if git is unavailable or the directory is
+    not a checkout (e.g. when running from a container or tarball).
+    """
+    try:
+        def g(*args: str) -> str:
+            return subprocess.check_output(
+                ["git", *args], stderr=subprocess.DEVNULL, cwd=os.path.dirname(os.path.abspath(__file__))
+            ).decode().strip()
+        sha = g("rev-parse", "--short", "HEAD")
+        branch = g("rev-parse", "--abbrev-ref", "HEAD")
+        date = g("log", "-1", "--format=%cI")
+        return f"{sha} {branch} {date}"
+    except Exception:
+        return "unknown"
+
+
+_VERSION = _git_version()
+
 with open("templates/index.html") as f:
     _index_html = f.read()
+
+# Inject a version marker at the top so `Ctrl+U` + search for "version" reveals
+# exactly which commit is serving the page. Purely for operator use.
+_index_html = f"<!-- version: {_VERSION} -->\n{_index_html}"
 
 
 def _annotate_loan_types(tingbog: dict) -> dict:
@@ -136,6 +163,11 @@ def sales_history(q: str = Query(...)):
 @app.get("/", response_class=HTMLResponse)
 def index():
     return HTMLResponse(content=_index_html)
+
+
+@app.get("/api/version")
+def version():
+    return {"version": _VERSION}
 
 
 # Mount MCP last so FastAPI routes take priority when matching paths.
