@@ -15,6 +15,7 @@ from mcp.server.fastmcp import FastMCP
 import uvicorn
 
 from nosy_neighbour import TinglysningClient, get_loan_type_info
+from boligsiden import get_sales_history
 
 DAWA_REVERSE_URL = "https://api.dataforsyningen.dk/adgangsadresser/reverse"
 
@@ -116,6 +117,20 @@ def lookup(q: str = Query(...)):
     if tingbog is None:
         raise HTTPException(status_code=404, detail="No property data found")
     return _annotate_loan_types(tingbog)
+
+
+@app.get("/api/sales-history")
+def sales_history(q: str = Query(...)):
+    """Historical sale prices for a given address, sourced from Boligsiden."""
+    try:
+        postnummer, vejnavn, husnummer = _client.resolve_address(q)
+    except RuntimeError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    try:
+        return get_sales_history(postnummer, vejnavn, husnummer)
+    except requests.RequestException as e:
+        log.warning("sales-history upstream error: %s", e)
+        raise HTTPException(status_code=502, detail="Boligsiden unreachable")
 
 
 @app.get("/", response_class=HTMLResponse)

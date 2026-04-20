@@ -475,7 +475,7 @@ async function addAddress(label, lat, lng) {
   const marker = L.marker([lat, lng], { icon: numberedIcon(idx + 1) }).addTo(map);
   marker.on('click', () => scrollToEntry(idx));
 
-  const entry = { label, lat, lng, data: null, error: null, loading: true, marker };
+  const entry = { label, lat, lng, data: null, error: null, loading: true, marker, salesHistory: null };
   entries.push(entry);
   renderSidebar();
 
@@ -495,6 +495,12 @@ async function addAddress(label, lat, lng) {
   entry.loading = false;
   renderSidebar();
   scrollToEntry(idx);
+
+  // Fetch sales history in the background; re-render when done.
+  fetch(`/api/sales-history?q=${encodeURIComponent(label)}`)
+    .then(r => r.ok ? r.json() : null)
+    .then(sh => { entry.salesHistory = sh; renderSidebar(); })
+    .catch(() => { /* ignore — optional enrichment */ });
 }
 
 function removeEntry(i) {
@@ -544,7 +550,7 @@ function renderSidebar() {
     } else if (entry.error) {
       section.appendChild(html(`<div style="color:#dc2626;padding:4px 0 10px">${entry.error}</div>`));
     } else if (entry.data) {
-      renderEntryCards(section, entry.data);
+      renderEntryCards(section, entry.data, entry.salesHistory);
     }
 
     el.appendChild(section);
@@ -554,7 +560,7 @@ function renderSidebar() {
   });
 }
 
-function renderEntryCards(container, d) {
+function renderEntryCards(container, d, salesHistory) {
   container.appendChild(html(`
     <div class="card">
       <div class="address-header">${d.adresse}</div>
@@ -636,6 +642,28 @@ function renderEntryCards(container, d) {
       <div class="card">
         <div class="card-title">Servitutter</div>
         ${d.servitutter.map(s => `<div class="easement">[${s.prioritet}] ${s.tekst}</div>`).join('')}
+      </div>
+    `));
+  }
+
+  if (salesHistory?.registrations?.length) {
+    const rows = salesHistory.registrations.map(r => {
+      const year = (r.date || '').slice(0, 4);
+      const pricePerM2 = r.perAreaPrice ? `${fmt(r.perAreaPrice)} kr/m²` : '—';
+      return `<tr>
+        <td>${r.date || ''}</td>
+        <td>${fmt(r.amount)} kr.</td>
+        <td>${pricePerM2}</td>
+        <td style="color:#6b7280">${r.typeLabel || ''}</td>
+      </tr>`;
+    }).join('');
+    container.appendChild(html(`
+      <div class="card">
+        <div class="card-title">Salgshistorik <span style="color:#6b7280;font-weight:400;font-size:11px">(via Boligsiden)</span></div>
+        <table>
+          <thead><tr><th>Dato</th><th>Pris</th><th>Pris/m²</th><th>Type</th></tr></thead>
+          ${rows}
+        </table>
       </div>
     `));
   }
