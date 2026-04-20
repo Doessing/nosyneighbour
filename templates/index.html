@@ -484,7 +484,7 @@ async function addAddress(label, lat, lng) {
   const marker = L.marker([lat, lng], { icon: numberedIcon(idx + 1) }).addTo(map);
   marker.on('click', () => scrollToEntry(idx));
 
-  const entry = { label, lat, lng, data: null, error: null, loading: true, marker, salesHistory: null };
+  const entry = { label, lat, lng, data: null, error: null, loading: true, marker, salesHistory: null, salesLoading: true };
   entries.push(entry);
   renderSidebar();
 
@@ -508,8 +508,9 @@ async function addAddress(label, lat, lng) {
   // Fetch sales history in the background; re-render when done.
   fetch(`/api/sales-history?q=${encodeURIComponent(label)}`)
     .then(r => r.ok ? r.json() : null)
-    .then(sh => { entry.salesHistory = sh; renderSidebar(); })
-    .catch(() => { /* ignore — optional enrichment */ });
+    .then(sh => { entry.salesHistory = sh; })
+    .catch(() => { /* ignore — optional enrichment */ })
+    .finally(() => { entry.salesLoading = false; renderSidebar(); });
 }
 
 function removeEntry(i) {
@@ -555,11 +556,14 @@ function renderSidebar() {
     `));
 
     if (entry.loading) {
-      section.appendChild(html('<div class="spinner">Henter oplysninger…</div>'));
+      section.appendChild(html('<div class="spinner">Henter fra tinglysning.dk…</div>'));
     } else if (entry.error) {
       section.appendChild(html(`<div style="color:#dc2626;padding:4px 0 10px">${entry.error}</div>`));
     } else if (entry.data) {
       renderEntryCards(section, entry.data, entry.salesHistory);
+      if (entry.salesLoading) {
+        section.appendChild(html('<div class="spinner">Henter salgshistorik fra Boligsiden…</div>'));
+      }
     }
 
     el.appendChild(section);

@@ -17,6 +17,7 @@ import uvicorn
 
 from nosy_neighbour import TinglysningClient, get_loan_type_info
 from boligsiden import get_sales_history
+from resolver import resolve as resolve_address, ResolveError
 
 DAWA_REVERSE_URL = "https://api.dataforsyningen.dk/adgangsadresser/reverse"
 
@@ -97,11 +98,11 @@ def lookup_sales_history(address: str) -> dict:
     auction=Tvangsauktion). Sorted newest first.
     """
     try:
-        postnummer, vejnavn, husnummer = _client.resolve_address(address)
-    except RuntimeError as e:
+        resolved = resolve_address(address)
+    except ResolveError as e:
         return {"error": str(e)}
     try:
-        return get_sales_history(postnummer, vejnavn, husnummer)
+        return get_sales_history(resolved)
     except requests.RequestException as e:
         return {"error": f"Boligsiden unreachable: {e}"}
 
@@ -169,14 +170,31 @@ def lookup(q: str = Query(...)):
 def sales_history(q: str = Query(...)):
     """Historical sale prices for a given address, sourced from Boligsiden."""
     try:
-        postnummer, vejnavn, husnummer = _client.resolve_address(q)
-    except RuntimeError as e:
+        resolved = resolve_address(q)
+    except ResolveError as e:
         raise HTTPException(status_code=404, detail=str(e))
     try:
-        return get_sales_history(postnummer, vejnavn, husnummer)
+        return get_sales_history(resolved)
     except requests.RequestException as e:
         log.warning("sales-history upstream error: %s", e)
         raise HTTPException(status_code=502, detail="Boligsiden unreachable")
+
+
+@app.get("/api/resolve")
+def resolve_endpoint(q: str = Query(...)):
+    """Return the structured identifiers nosy-neighbour derives for an address.
+
+    Useful for debugging (why does source X not find my address?) and as a
+    shared primitive for any client that wants to call multiple data-source
+    endpoints without re-paying the DAWA round-trip cost.
+    """
+    try:
+        return resolve_address(q).to_dict()
+    except ResolveError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except requests.RequestException as e:
+        log.warning("resolver upstream error: %s", e)
+        raise HTTPException(status_code=502, detail="DAWA unreachable")
 
 
 @app.get("/", response_class=HTMLResponse)

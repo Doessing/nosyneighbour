@@ -1,17 +1,16 @@
 """
 Boligsiden client for fetching historical sale prices of a Danish address.
 
-Flow:
-  1. Resolve a freeform address to its DAWA "adresse" UUID via the DAWA API.
-  2. Fetch /addresses/{uuid} from api.boligsiden.dk — the response contains
-     a `registrations` array with all recorded sales for that exact address.
+Input is a `ResolvedAddress` (from resolver.py) — we reuse its `adresse_uuid`
+which is the same UUID Boligsiden's public API uses.
 
 Notes:
-  * Boligsiden uses the same UUIDs that DAWA publishes, so one DAWA lookup is
-    sufficient to bridge between the two APIs.
   * The /addresses/{uuid} endpoint does not require any auth or API key
     (verified 2026-04-20). If that ever changes, see
     ~/.config/opencode/context-server-motd.md for the known public key.
+  * Responses are cached in-process with a short TTL. Sale registrations are
+    public records that only grow over time; a few minutes of staleness is
+    fine and saves repeated round-trips when users re-query the same address.
 """
 
 from __future__ import annotations
@@ -20,10 +19,12 @@ import logging
 from typing import Any
 
 import requests
+from cachetools import TTLCache
+
+from resolver import ResolvedAddress
 
 log = logging.getLogger(__name__)
 
-DAWA_ADRESSER_URL = "https://api.dataforsyningen.dk/adresser"
 BOLIGSIDEN_ADDRESS_URL = "https://api.boligsiden.dk/addresses/{uuid}"
 
 # Translate Boligsiden's registration types to user-facing Danish.
@@ -34,41 +35,25 @@ REGISTRATION_TYPE_LABELS = {
     "other": "Andet",
 }
 
-
-def resolve_address_uuid(postnr: str, vejnavn: str, husnr: str) -> str | None:
-    """Return the DAWA "adresse" UUID for a given structured address, or None."""
-    resp = requests.get(
-        DAWA_ADRESSER_URL,
-        params={
-            "postnr": postnr,
-            "vejnavn": vejnavn,
-            "husnr": husnr,
-            "struktur": "mini",
-        },
-        timeout=10,
-    )
-    resp.raise_for_status()
-    hits = resp.json()
-    if not hits:
-        return None
-    # If multiple addresses share the same house number (e.g. flats with etage/dør),
-    # return the first one without etage/dør — it's usually the ground/building entry.
-    for h in hits:
-        if not h.get("etage") and not h.get("dør"):
-            return h["id"]
-    return hits[0]["id"]
+# Keyed by adresse_uuid. 10 minutes is plenty — registrations are append-only
+# public records and this primarily absorbs rapid re-queries.
+_SALES_CACHE: TTLCache[str, list[dict[str, Any]]] = TTLCache(maxsize=2048, ttl=600)
 
 
-def fetch_sales_history(uuid: str) -> list[dict[str, Any]]:
-    """Fetch the `registrations` array for a Boligsiden address UUID.
+def fetch_sales_history(resolved: ResolvedAddress) -> list[dict[str, Any]]:
+    """Return enriched sale registrations for an address, newest first.
 
-    Each entry has `date`, `amount`, `area`, `type`, plus a derived
-    `perAreaPrice` (kr/m²) and `typeLabel` (Danish).
-
-    Returns sorted newest-first. Returns [] if no data or address unknown.
+    Each entry has `date`, `amount`, `area`, `type`, `typeLabel` (Danish) and
+    derived `perAreaPrice` (kr/m²). Empty list if Boligsiden has no data.
     """
+    uuid = resolved.adresse_uuid
+    cached = _SALES_CACHE.get(uuid)
+    if cached is not None:
+        return cached
+
     resp = requests.get(BOLIGSIDEN_ADDRESS_URL.format(uuid=uuid), timeout=10)
     if resp.status_code == 404:
+        _SALES_CACHE[uuid] = []
         return []
     resp.raise_for_status()
     data = resp.json()
@@ -85,18 +70,19 @@ def fetch_sales_history(uuid: str) -> list[dict[str, Any]]:
             "area": area,
             "type": r.get("type"),
             "typeLabel": REGISTRATION_TYPE_LABELS.get(
-                r.get("type", ""), r.get("type", "").capitalize() or "Ukendt"
+                r.get("type", ""), (r.get("type") or "").capitalize() or "Ukendt"
             ),
             "perAreaPrice": per_m2,
         })
-    # Sort newest first (dates are ISO YYYY-MM-DD so string sort works).
+    # Sort newest first (ISO YYYY-MM-DD so lexicographic sort is correct).
     enriched.sort(key=lambda e: e.get("date") or "", reverse=True)
+    _SALES_CACHE[uuid] = enriched
     return enriched
 
 
-def get_sales_history(postnr: str, vejnavn: str, husnr: str) -> dict[str, Any]:
-    """Top-level: structured address -> {uuid, registrations}."""
-    uuid = resolve_address_uuid(postnr, vejnavn, husnr)
-    if not uuid:
-        return {"uuid": None, "registrations": []}
-    return {"uuid": uuid, "registrations": fetch_sales_history(uuid)}
+def get_sales_history(resolved: ResolvedAddress) -> dict[str, Any]:
+    """Top-level: resolved address -> {uuid, registrations}."""
+    return {
+        "uuid": resolved.adresse_uuid,
+        "registrations": fetch_sales_history(resolved),
+    }
