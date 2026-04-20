@@ -229,7 +229,7 @@
     .darkmode-btn:hover { background: #f3f4f6; color: #111; }
 
     /* ── History button ── */
-    #search-box { display: flex; gap: 8px; flex-wrap: wrap; }
+    #search-box { display: flex; gap: 8px; }
     #search-input { flex: 1; min-width: 0; }
     .history-btn {
       width: 38px; flex-shrink: 0;
@@ -323,7 +323,9 @@
     // Apply theme before render to avoid flash
     (function() {
       const t = localStorage.getItem('nosy-theme');
-      if (t === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+      if (t === 'dark' || (!t && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+        document.documentElement.setAttribute('data-theme', 'dark');
+      }
     })();
   </script>
 </head>
@@ -431,7 +433,7 @@ input.addEventListener('input', () => {
 });
 
 input.addEventListener('keydown', e => {
-  if (e.key === 'Escape') hideSuggestions();
+  if (e.key === 'Escape') { hideSuggestions(); hideHistory(); }
   if (e.key === 'Enter' && currentSuggestions.length > 0) {
     selectSuggestion(currentSuggestions[0]);
   }
