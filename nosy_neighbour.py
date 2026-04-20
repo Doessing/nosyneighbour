@@ -418,15 +418,76 @@ class TinglysningClient:
         _tingbog_cache[uuid] = data
         return data
 
-    def lookup_address(self, postnummer: str, vejnavn: str, husnummer: str) -> dict:
+    def lookup_address(
+        self,
+        postnummer: str,
+        vejnavn: str,
+        husnummer: str,
+        *,
+        matrikelnr: str | None = None,
+        ejerlavskode: str | None = None,
+    ) -> dict:
         """Full lookup: search for a property and return its tingbog data.
 
         Combines search_property() and get_tingbog() into a single call.
+
+        If the exact-address search returns no result (which happens for
+        andelsboliger / almennyttige ejendomme where the individual dwelling
+        has no separate tingbog), we fall back to scanning every tingbog on
+        the street and matching on the DAWA matrikelnr + ejerlavskode. That
+        lets us surface the parent foundation/association's tingbog instead
+        of a bare 404.
+
+        The returned tingbog gets a `_matrikel_fallback` dict with details
+        about why it was used, or None when the exact address matched.
         """
         items = self.search_property(postnummer, vejnavn, husnummer)
-        if not items:
-            raise RuntimeError("No property found for the given address")
-        return self.get_tingbog(items[0]["uuid"])
+        if items:
+            tingbog = self.get_tingbog(items[0]["uuid"])
+            tingbog["_matrikel_fallback"] = None
+            return tingbog
+
+        # No exact match — try to find the owning tingbog via matrikel.
+        if matrikelnr and ejerlavskode:
+            fallback = self._find_tingbog_by_matrikel(
+                postnummer, vejnavn, matrikelnr, ejerlavskode,
+            )
+            if fallback is not None:
+                tingbog, parent_adresse = fallback
+                tingbog["_matrikel_fallback"] = {
+                    "matrikelnr": matrikelnr,
+                    "ejerlavskode": ejerlavskode,
+                    "parent_adresse": parent_adresse,
+                }
+                return tingbog
+
+        raise RuntimeError("No property found for the given address")
+
+    def _find_tingbog_by_matrikel(
+        self,
+        postnummer: str,
+        vejnavn: str,
+        matrikelnr: str,
+        ejerlavskode: str,
+    ) -> tuple[dict, str] | None:
+        """Scan every tingbog on the street for one that owns the given matrikel.
+
+        Returns (tingbog_data, parent_address_label) or None.
+        """
+        items = self._get_json(f"{BASE_URL}/ejendomsoeg/soeg", {
+            "postnummer": postnummer,
+            "vejnavn": vejnavn,
+        }).get("items") or []
+        for it in items:
+            try:
+                tingbog = self.get_tingbog(it["uuid"])
+            except RuntimeError:
+                continue
+            for mat in tingbog.get("matrikler") or []:
+                if (mat.get("matrikelnummer") == matrikelnr
+                        and str(mat.get("landsejerlavkode")) == ejerlavskode):
+                    return tingbog, it.get("adresse", "")
+        return None
 
     def lookup(self, query: str) -> dict:
         """Look up a property by freeform address string.

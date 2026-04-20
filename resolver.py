@@ -40,6 +40,9 @@ class ResolvedAddress:
     adresse_uuid: str          # DAWA "adresse" UUID — also used by Boligsiden
     adgang_uuid: str           # DAWA "adgangsadresse" UUID — BBR, Datafordeler
     kommunekode: str
+    matrikelnr: str            # e.g. "4hf" — used to find tingbog via matrikel
+    ejerlavskode: str          # e.g. "1290159" — pairs with matrikelnr
+    ejerlavsnavn: str
     lat: float
     lng: float
 
@@ -172,6 +175,10 @@ def resolve(query: str) -> ResolvedAddress:
     etage = a.get("etage")
     door = a.get("dør")
     koord = (adgang.get("adgangspunkt") or {}).get("koordinater") or [0.0, 0.0]
+    ejerlav = adgang.get("ejerlav") or {}
+    matrikelnr = adgang.get("matrikelnr", "") or ""
+    ejerlavskode = str(ejerlav.get("kode", "") or "")
+    ejerlavsnavn = ejerlav.get("navn", "") or ""
 
     label = f"{vejnavn} {husnr}"
     if etage:
@@ -191,6 +198,9 @@ def resolve(query: str) -> ResolvedAddress:
         adresse_uuid=a["id"],
         adgang_uuid=adgang.get("id", ""),
         kommunekode=(adgang.get("kommune") or {}).get("kode", ""),
+        matrikelnr=matrikelnr,
+        ejerlavskode=ejerlavskode,
+        ejerlavsnavn=ejerlavsnavn,
         lat=koord[1],
         lng=koord[0],
     )

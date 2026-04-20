@@ -79,8 +79,17 @@ def lookup_property(address: str) -> dict:
     and easements (servitutter).
     """
     try:
-        postnummer, vejnavn, husnummer = _client.resolve_address(address)
-        tingbog = _client.lookup_address(postnummer, vejnavn, husnummer)
+        resolved = resolve_address(address)
+    except ResolveError as e:
+        return {"error": str(e)}
+    try:
+        tingbog = _client.lookup_address(
+            resolved.postnr,
+            resolved.vejnavn,
+            resolved.husnr,
+            matrikelnr=resolved.matrikelnr or None,
+            ejerlavskode=resolved.ejerlavskode or None,
+        )
     except RuntimeError as e:
         return {"error": str(e)}
     if tingbog is None:
@@ -157,10 +166,26 @@ def reverse(lat: float = Query(...), lng: float = Query(...)):
 @app.get("/api/lookup")
 def lookup(q: str = Query(...)):
     try:
-        postnummer, vejnavn, husnummer = _client.resolve_address(q)
-        tingbog = _client.lookup_address(postnummer, vejnavn, husnummer)
-    except RuntimeError as e:
+        resolved = resolve_address(q)
+    except ResolveError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    try:
+        tingbog = _client.lookup_address(
+            resolved.postnr,
+            resolved.vejnavn,
+            resolved.husnr,
+            matrikelnr=resolved.matrikelnr or None,
+            ejerlavskode=resolved.ejerlavskode or None,
+        )
+    except RuntimeError as e:
+        msg = str(e)
+        if "No property found" in msg:
+            msg = (
+                "Adressen har ingen selvstændig tingbog. Det sker typisk for "
+                "andelsboliger, lejeboliger og ejendomme uden selvstændig BFE. "
+                "Prøv foreningens hovedadresse."
+            )
+        raise HTTPException(status_code=404, detail=msg)
     if tingbog is None:
         raise HTTPException(status_code=404, detail="No property data found")
     return _annotate_loan_types(tingbog)

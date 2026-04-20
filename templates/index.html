@@ -574,6 +574,21 @@ function renderSidebar() {
 }
 
 function renderEntryCards(container, d, salesHistory) {
+  if (d._matrikel_fallback) {
+    const fb = d._matrikel_fallback;
+    container.appendChild(html(`
+      <div class="card" style="border-left:3px solid #d97706;background:#fffbeb">
+        <div class="card-title" style="color:#92400e">Andelsbolig / fællesejendom</div>
+        <div style="font-size:13px;line-height:1.5">
+          Den søgte adresse har ikke sin egen tingbog. Tingbogen nedenfor dækker
+          hele ejendommen (matrikel <strong>${fb.matrikelnr}</strong>,
+          ejerlav ${fb.ejerlavskode}), som typisk ejes af en andelsbolig\u00ADforening
+          eller almen boligorganisation.
+          ${fb.parent_adresse ? `Hovedadresse: <strong>${fb.parent_adresse}</strong>.` : ''}
+        </div>
+      </div>
+    `));
+  }
   container.appendChild(html(`
     <div class="card">
       <div class="address-header">${d.adresse}</div>
