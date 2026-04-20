@@ -87,6 +87,25 @@ def lookup_property(address: str) -> dict:
     return _annotate_loan_types(tingbog)
 
 
+@mcp_server.tool()
+def lookup_sales_history(address: str) -> dict:
+    """Look up historical sale prices for a Danish address from Boligsiden.
+
+    Given a freeform Danish address, returns every recorded sale of that
+    exact address with date, price (DKK), area (m²), price per m², and
+    sale type (normal=Almindeligt salg, family=Familiehandel,
+    auction=Tvangsauktion). Sorted newest first.
+    """
+    try:
+        postnummer, vejnavn, husnummer = _client.resolve_address(address)
+    except RuntimeError as e:
+        return {"error": str(e)}
+    try:
+        return get_sales_history(postnummer, vejnavn, husnummer)
+    except requests.RequestException as e:
+        return {"error": f"Boligsiden unreachable: {e}"}
+
+
 # ── FastAPI app ───────────────────────────────────────────────────────────────
 _mcp_asgi = mcp_server.streamable_http_app()  # lazily initialises session_manager
 
