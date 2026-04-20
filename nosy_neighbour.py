@@ -17,6 +17,7 @@ import time
 from datetime import datetime, timedelta
 
 import requests
+from cachetools import TTLCache
 
 BASE_URL = "https://www.tinglysning.dk/tinglysning/unsecrest"
 DAWA_URL = "https://dawa.aws.dk/autocomplete"
@@ -37,6 +38,12 @@ RENTFIX_CODES = list(RENTFIX_LOAN_TYPES.keys())
 _CLOSE_MATCH_THRESHOLD = 0.4
 # Rate delta above which we consider the estimation uncertain.
 _UNCERTAIN_THRESHOLD = 1.0
+
+# Cache DST rate lookups (monthly data, refreshed rarely) and tingbog results
+# to avoid repeating slow upstream calls during loan-type annotation and
+# back-to-back property lookups.
+_dst_cache: TTLCache = TTLCache(maxsize=256, ttl=86400)     # 24h
+_tingbog_cache: TTLCache = TTLCache(maxsize=1024, ttl=600)  # 10min
 
 # Ticker patterns that identify loan types in ESMA FIRDS data.
 # Realkredit Danmark: 1RD...1IT=F1, 1RD...2IT=F3, 1RD...RF=F5
@@ -95,6 +102,10 @@ def _fetch_dst_rates(months: list[str]) -> dict:
 
     Returns {month: {rentfix_code: {"effective": float, "bidrag": float, "coupon": float}}}
     """
+    key = tuple(months)
+    hit = _dst_cache.get(key)
+    if hit is not None:
+        return hit
     resp = requests.post(DST_API_URL, json={
         "table": "DNRNURI",
         "format": "JSONSTAT",
@@ -130,6 +141,7 @@ def _fetch_dst_rates(months: list[str]) -> dict:
                     "bidrag": bid,
                     "coupon": round(eff - bid, 4),
                 }
+    _dst_cache[key] = result
     return result
 
 
@@ -397,9 +409,13 @@ class TinglysningClient:
 
         Returns property details including owners, mortgages, easements, and valuation.
         """
+        hit = _tingbog_cache.get(uuid)
+        if hit is not None:
+            return hit
         data = self._get_json(f"{BASE_URL}/ejendomsoeg/henttingbog/{uuid}", {})
         if data.get("statuskode") != 0:
             raise RuntimeError(f"Lookup failed: {data.get('statustekst')}")
+        _tingbog_cache[uuid] = data
         return data
 
     def lookup_address(self, postnummer: str, vejnavn: str, husnummer: str) -> dict:
