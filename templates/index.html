@@ -142,6 +142,15 @@
     td:first-child { color: #6b7280; width: 130px; }
     td:last-child { font-weight: 500; }
 
+    /* ── Sales history table (4 columns, different layout than key/value) ── */
+    .sales-history td,
+    .sales-history th { padding: 4px 6px 4px 0; white-space: nowrap; }
+    .sales-history td:first-child { color: #6b7280; width: auto; font-variant-numeric: tabular-nums; }
+    .sales-history td:last-child { font-weight: 400; white-space: normal; }
+    .sales-history th { text-align: left; font-size: 11px; color: #6b7280; font-weight: 500; border-bottom: 1px solid #e5e7eb; }
+    [data-theme="dark"] .sales-history th { border-bottom-color: #334155; }
+    .sales-history td.num { text-align: right; font-variant-numeric: tabular-nums; }
+
     /* ── Mortgage items ── */
     .mortgage {
       border: 1px solid #e5e7eb;
@@ -647,21 +656,26 @@ function renderEntryCards(container, d, salesHistory) {
   }
 
   if (salesHistory?.registrations?.length) {
+    const monthsDa = ['jan','feb','mar','apr','maj','jun','jul','aug','sep','okt','nov','dec'];
+    const shortDate = (iso) => {
+      if (!iso) return '';
+      const [y, m] = iso.split('-');
+      return `${monthsDa[parseInt(m, 10) - 1] || m} ${y}`;
+    };
     const rows = salesHistory.registrations.map(r => {
-      const year = (r.date || '').slice(0, 4);
       const pricePerM2 = r.perAreaPrice ? `${fmt(r.perAreaPrice)} kr/m²` : '—';
       return `<tr>
-        <td>${r.date || ''}</td>
-        <td>${fmt(r.amount)} kr.</td>
-        <td>${pricePerM2}</td>
-        <td style="color:#6b7280">${r.typeLabel || ''}</td>
+        <td>${shortDate(r.date)}</td>
+        <td class="num">${fmt(r.amount)} kr.</td>
+        <td class="num">${pricePerM2}</td>
+        <td>${r.typeLabel || ''}</td>
       </tr>`;
     }).join('');
     container.appendChild(html(`
       <div class="card">
         <div class="card-title">Salgshistorik <span style="color:#6b7280;font-weight:400;font-size:11px">(via Boligsiden)</span></div>
-        <table>
-          <thead><tr><th>Dato</th><th>Pris</th><th>Pris/m²</th><th>Type</th></tr></thead>
+        <table class="sales-history">
+          <thead><tr><th>Dato</th><th style="text-align:right">Pris</th><th style="text-align:right">Pris/m²</th><th>Type</th></tr></thead>
           ${rows}
         </table>
       </div>
