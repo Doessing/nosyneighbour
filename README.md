@@ -1,3 +1,5 @@
+# THIS IS A TOY IMPLEMENTATION - USE AT YOUR OWN RISK
+
 # nosy-neighbour
 
 Look up Danish property records from [tinglysning.dk](https://www.tinglysning.dk) via a map-based browser UI or a command-line tool.
