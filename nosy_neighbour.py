@@ -119,7 +119,7 @@ def _fetch_dst_rates(months: list[str]) -> dict:
             {"code": "LAANSTR", "values": ["ALLE"]},
             {"code": "Tid", "values": months},
         ],
-    })
+    }, timeout=15)
     resp.raise_for_status()
     data = resp.json()
     values = data["dataset"]["value"]
@@ -220,7 +220,7 @@ def lookup_isin(isin: str) -> dict | None:
         "q": f"isin:{isin}",
         "wt": "json",
         "rows": 1,
-    })
+    }, timeout=10)
     resp.raise_for_status()
     data = resp.json()
 
@@ -308,6 +308,11 @@ def get_loan_type_info(rate: float, isin: str | None = None, alias: str | None =
 
 
 class TinglysningClient:
+    # Upstream tinglysning.dk has been observed to hang for minutes on
+    # individual requests. Cap every call so one slow property doesn't tie
+    # up a worker forever.
+    _TIMEOUT = (5, 20)  # (connect, read) seconds
+
     def __init__(self):
         self.session = requests.Session()
         self.session.headers.update({
@@ -320,7 +325,7 @@ class TinglysningClient:
     def _get_token(self) -> str:
         """Fetch and solve an ALTCHA challenge; reuse within the same session."""
         if self._token is None:
-            resp = self.session.get(f"{BASE_URL}/altcha/fetchChallenge")
+            resp = self.session.get(f"{BASE_URL}/altcha/fetchChallenge", timeout=self._TIMEOUT)
             resp.raise_for_status()
             self._token = _solve_altcha(resp.json())
         return self._token
@@ -338,7 +343,7 @@ class TinglysningClient:
             "side": 1,
             "fuzzy": "true",
             "supplerendebynavn": "true",
-        })
+        }, timeout=self._TIMEOUT)
         resp.raise_for_status()
         return resp.json()
 
@@ -372,9 +377,14 @@ class TinglysningClient:
         for attempt in range(2):
             params["token"] = self._get_token()
             try:
-                resp = self.session.get(url, params=params)
+                resp = self.session.get(url, params=params, timeout=self._TIMEOUT)
             except requests.exceptions.ConnectionError:
                 # Stale keep-alive connection — retry will open a fresh one
+                if attempt == 1:
+                    raise
+                continue
+            except requests.exceptions.Timeout:
+                # Read/connect timeout — retry once with a fresh connection
                 if attempt == 1:
                     raise
                 continue

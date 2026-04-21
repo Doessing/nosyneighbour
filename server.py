@@ -216,6 +216,15 @@ def lookup(q: str = Query(...)):
             matrikelnr=resolved.matrikelnr or None,
             ejerlavskode=resolved.ejerlavskode or None,
         )
+    except requests.Timeout:
+        log.warning("tinglysning timeout for %r", q)
+        raise HTTPException(
+            status_code=504,
+            detail="Tinglysning.dk svarer ikke lige nu — prøv igen om lidt.",
+        )
+    except requests.RequestException as e:
+        log.warning("tinglysning upstream error for %r: %s", q, e)
+        raise HTTPException(status_code=502, detail="Tinglysning.dk unreachable")
     except RuntimeError as e:
         msg = str(e)
         if "No property found" in msg:
