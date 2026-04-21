@@ -99,6 +99,11 @@
       line-height: 1.8;
     }
     .empty-state strong { display: block; font-size: 16px; color: #666; margin-bottom: 8px; }
+    .empty-state .empty-logo {
+      width: 40px; height: 40px;
+      display: block;
+      margin: 0 auto 10px;
+    }
 
     /* ── Entry (per address) ── */
     .entry-header {
@@ -389,6 +394,7 @@
   </div>
   <div id="results">
     <div class="empty-state">
+      <img class="empty-logo" src="/favicon.svg" alt="" aria-hidden="true">
       <strong>Nosy Neighbour</strong>
       Søg på en adresse eller klik på kortet.<br>Op til 10 adresser ad gangen.
     </div>
@@ -653,7 +659,7 @@ function scrollToEntry(idx) {
 function renderSidebar() {
   const el = document.getElementById('results');
   if (entries.length === 0) {
-    el.innerHTML = `<div class="empty-state"><strong>Nosy Neighbour</strong>Søg på en adresse eller klik på kortet.<br>Op til 10 adresser ad gangen.</div>`;
+    el.innerHTML = `<div class="empty-state"><img class="empty-logo" src="/favicon.svg" alt="" aria-hidden="true"><strong>Nosy Neighbour</strong>Søg på en adresse eller klik på kortet.<br>Op til 10 adresser ad gangen.</div>`;
     return;
   }
 
