@@ -160,12 +160,13 @@ def autocomplete(q: str = Query(...)):
 
 @app.get("/api/reverse")
 def reverse(lat: float = Query(...), lng: float = Query(...)):
-    # maks_afstand is in metres; 500 m keeps ocean clicks and
-    # cross-border clicks from silently resolving to a distant address.
+    # DAWA reverse silently ignores maks_afstand and defaults to EPSG:25832 —
+    # pass srid=4326 explicitly and post-validate distance ourselves so ocean
+    # and cross-border clicks don't silently resolve to a distant address.
     try:
         resp = requests.get(
             DAWA_REVERSE_URL,
-            params={"x": lng, "y": lat, "maks_afstand": 500},
+            params={"x": lng, "y": lat, "srid": 4326, "maks_afstand": 500},
             timeout=10,
         )
     except requests.RequestException as e:
@@ -178,13 +179,26 @@ def reverse(lat: float = Query(...), lng: float = Query(...)):
         )
     resp.raise_for_status()
     d = resp.json()
+    a_lat = d["adgangspunkt"]["koordinater"][1]
+    a_lng = d["adgangspunkt"]["koordinater"][0]
+    # Haversine distance in metres
+    from math import radians, sin, cos, asin, sqrt
+    dlat = radians(a_lat - lat)
+    dlng = radians(a_lng - lng)
+    h = sin(dlat / 2) ** 2 + cos(radians(lat)) * cos(radians(a_lat)) * sin(dlng / 2) ** 2
+    dist_m = 2 * 6371000 * asin(sqrt(h))
+    if dist_m > 500:
+        raise HTTPException(
+            status_code=404,
+            detail="Ingen adresse inden for 500 m af det valgte punkt.",
+        )
     return {
         "label": d["adressebetegnelse"],
         "postnr": d["postnummer"]["nr"],
         "vejnavn": d["vejstykke"]["navn"],
         "husnr": d["husnr"],
-        "lat": d["adgangspunkt"]["koordinater"][1],
-        "lng": d["adgangspunkt"]["koordinater"][0],
+        "lat": a_lat,
+        "lng": a_lng,
     }
 
 
