@@ -310,8 +310,9 @@ def get_loan_type_info(rate: float, isin: str | None = None, alias: str | None =
 class TinglysningClient:
     # Upstream tinglysning.dk has been observed to hang for minutes on
     # individual requests. Cap every call so one slow property doesn't tie
-    # up a worker forever.
-    _TIMEOUT = (5, 20)  # (connect, read) seconds
+    # up a worker forever, but keep the read budget generous (45 s) so we
+    # don't falsely give up on a property that's just slow.
+    _TIMEOUT = (10, 45)  # (connect, read) seconds
 
     def __init__(self):
         self.session = requests.Session()
