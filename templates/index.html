@@ -504,6 +504,7 @@ async function addAddress(label, lat, lng) {
   }
   entry.loading = false;
   renderSidebar();
+  scrollToEntry(idx);
 
   // Fetch sales history in the background; re-render when done.
   fetch(`/api/sales-history?q=${encodeURIComponent(label)}`)
