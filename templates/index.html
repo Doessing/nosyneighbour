@@ -4,10 +4,30 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Nosy Neighbour</title>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <meta name="description" content="Slå op på dansk ejendomsdata: hæftelser, ejere, vurdering, matrikel og salgshistorik.">
+  <meta name="robots" content="noindex, nofollow">
+  <meta property="og:title" content="Nosy Neighbour">
+  <meta property="og:description" content="Slå op på dansk ejendomsdata: hæftelser, ejere, vurdering, matrikel og salgshistorik.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://nosy.dossing.net/">
+  <meta property="og:image" content="https://nosy.dossing.net/favicon.svg">
+  <link rel="preconnect" href="https://api.dataforsyningen.dk" crossorigin>
+  <link rel="preconnect" href="https://a.tile.openstreetmap.org" crossorigin>
+  <link rel="preconnect" href="https://b.tile.openstreetmap.org" crossorigin>
+  <link rel="preconnect" href="https://c.tile.openstreetmap.org" crossorigin>
+  <link rel="stylesheet" href="/static/leaflet/leaflet.css"/>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg"/>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    /* Screen-reader-only heading for SEO/a11y without visual impact. */
+    .visually-hidden {
+      position: absolute;
+      width: 1px; height: 1px;
+      padding: 0; margin: -1px;
+      overflow: hidden; clip: rect(0,0,0,0);
+      white-space: nowrap; border: 0;
+    }
 
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -356,6 +376,8 @@
 </head>
 <body>
 
+<h1 class="visually-hidden">Nosy Neighbour — dansk ejendomsopslag</h1>
+
 <div id="sidebar">
   <div id="search-box">
     <input id="search-input" type="text" placeholder="Søg adresse… (fx Stålhøjen 24 Risskov)" autocomplete="off"/>
@@ -374,7 +396,7 @@
 
 <div id="map"></div>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="/static/leaflet/leaflet.js"></script>
 <script>
 // ── Map setup ──────────────────────────────────────────────────────────────
 const map = L.map('map').setView([56.0, 10.5], 7);

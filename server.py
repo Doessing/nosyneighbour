@@ -12,7 +12,8 @@ from contextlib import asynccontextmanager
 
 import requests
 from fastapi import FastAPI, HTTPException, Query, Response
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse
+from fastapi.staticfiles import StaticFiles
 from mcp.server.fastmcp import FastMCP
 import uvicorn
 
@@ -135,6 +136,11 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="nosy-neighbour", lifespan=lifespan)
+
+# Self-hosted Leaflet (and any future static assets). Mounted before the MCP
+# catch-all on / so /static/* routes resolve here. StaticFiles sets
+# Last-Modified + ETag automatically; Cloudflare caches .js/.css by default.
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
 @app.get("/api/autocomplete")
@@ -300,6 +306,17 @@ _FAVICON_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
 @app.get("/favicon.svg")
 def favicon():
     return Response(content=_FAVICON_SVG, media_type="image/svg+xml")
+
+
+# Tell crawlers to stay out — the site is geo-blocked to DK and lives behind
+# a free-tier Cloudflare WAF; there's nothing useful for search engines here
+# and indexing only invites scraping attempts.
+_ROBOTS_TXT = "User-agent: *\nDisallow: /\n"
+
+
+@app.get("/robots.txt", response_class=PlainTextResponse)
+def robots():
+    return _ROBOTS_TXT
 
 
 @app.get("/api/version")
