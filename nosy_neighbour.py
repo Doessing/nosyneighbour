@@ -367,6 +367,8 @@ class TinglysningClient:
         - Empty/non-JSON body: ALTCHA token expired; discard cached token and retry.
         """
         params = dict(params)
+        last_status: int = 0
+        last_text: str = ""
         for attempt in range(2):
             params["token"] = self._get_token()
             try:
@@ -377,6 +379,8 @@ class TinglysningClient:
                     raise
                 continue
             resp.raise_for_status()
+            last_status = resp.status_code
+            last_text = resp.text
             if resp.content and resp.text.strip():
                 try:
                     return resp.json()
@@ -384,16 +388,18 @@ class TinglysningClient:
                     pass
             # Empty or non-JSON body — token is stale, discard and retry once
             self._token = None
-            if attempt == 1:
-                raise RuntimeError(
-                    f"Invalid response from tinglysning.dk after token refresh "
-                    f"(status {resp.status_code}): {resp.text[:200] or '(empty)'}"
-                )
+        # Both attempts exhausted without a JSON payload.
+        raise RuntimeError(
+            f"Invalid response from tinglysning.dk after token refresh "
+            f"(status {last_status}): {last_text[:200] or '(empty)'}"
+        )
 
     def search_property(self, postnummer: str, vejnavn: str, husnummer: str) -> list[dict]:
         """Search for a property by address components.
 
-        Returns a list of matching properties with 'uuid', 'adresse', and 'bog' fields.
+        Returns a list of matching properties with 'uuid', 'adresse', and 'bog'
+        fields. Returns an empty list when tinglysning.dk reports success but
+        has no match (items can be null in that case).
         """
         data = self._get_json(f"{BASE_URL}/ejendomsoeg/soeg", {
             "postnummer": postnummer,
@@ -402,7 +408,7 @@ class TinglysningClient:
         })
         if data.get("statuskode") != 0:
             raise RuntimeError(f"Search failed: {data.get('statustekst')}")
-        return data["items"]
+        return data.get("items") or []
 
     def get_tingbog(self, uuid: str) -> dict:
         """Fetch the full tingbog (property register) for a property UUID.

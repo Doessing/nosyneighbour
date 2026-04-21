@@ -383,8 +383,12 @@ function loanAgeMonths(alias) {
   try {
     const [d, m, y] = datePart.split('.').map(Number);
     const reg = new Date(y, m - 1, d);
+    if (isNaN(reg.getTime())) return null;
     const now = new Date();
-    return (now.getFullYear() - reg.getFullYear()) * 12 + (now.getMonth() - reg.getMonth());
+    // Bug 13: use day-difference for more accurate month count (avg 30.44 days/month)
+    const dayDiff = (now - reg) / 86400000;
+    if (dayDiff < 0) return null;
+    return Math.round(dayDiff / 30.44);
   } catch { return null; }
 }
 
@@ -458,7 +462,7 @@ async function fetchSuggestions(q) {
   currentSuggestions = await res.json();
   if (!currentSuggestions.length) { hideSuggestions(); return; }
   suggestionsEl.innerHTML = currentSuggestions
-    .map((s, i) => `<div class="suggestion" data-i="${i}">${s.label}</div>`)
+    .map((s, i) => `<div class="suggestion" data-i="${i}">${esc(s.label)}</div>`)
     .join('');
   suggestionsEl.style.display = 'block';
   suggestionsEl.querySelectorAll('.suggestion').forEach(el => {
@@ -480,6 +484,10 @@ function selectSuggestion(s) {
 
 // ── Multi-address management ───────────────────────────────────────────────
 async function addAddress(label, lat, lng) {
+  // Bug 9: reject duplicates (same label already in the list)
+  if (entries.some(e => e.label === label)) {
+    return;
+  }
   const idx = entries.length;
   const marker = L.marker([lat, lng], { icon: numberedIcon(idx + 1) }).addTo(map);
   marker.on('click', () => scrollToEntry(idx));
@@ -494,8 +502,8 @@ async function addAddress(label, lat, lng) {
     if (res.ok) {
       entry.data = await res.json();
       saveToHistory(label, lat, lng);
-      const owners = (entry.data.ejere || []).map(e => `${e.navn} (${e.andel})`).join('<br>');
-      marker.bindPopup(`<div class="popup-address">${entry.data.adresse}</div><div class="popup-owners">${owners}</div>`);
+      const owners = (entry.data.ejere || []).map(e => `${esc(e.navn)} (${esc(e.andel)})`).join('<br>');
+      marker.bindPopup(`<div class="popup-address">${esc(entry.data.adresse)}</div><div class="popup-owners">${owners}</div>`);
     } else {
       entry.error = (await res.json()).detail || 'Fejl';
     }
@@ -511,7 +519,12 @@ async function addAddress(label, lat, lng) {
     .then(r => r.ok ? r.json() : null)
     .then(sh => { entry.salesHistory = sh; })
     .catch(() => { /* ignore — optional enrichment */ })
-    .finally(() => { entry.salesLoading = false; renderSidebar(); });
+    .finally(() => {
+      // Bug 14: entry may have been removed while fetch was in flight
+      if (!entries.includes(entry)) return;
+      entry.salesLoading = false;
+      renderSidebar();
+    });
 }
 
 function removeEntry(i) {
@@ -551,7 +564,7 @@ function renderSidebar() {
     section.appendChild(html(`
       <div class="entry-header">
         <span class="entry-num">${i + 1}</span>
-        <span class="entry-label">${entry.label}</span>
+        <span class="entry-label">${esc(entry.label)}</span>
         <button class="entry-remove" onclick="removeEntry(${i})" title="Fjern">×</button>
       </div>
     `));
@@ -559,7 +572,7 @@ function renderSidebar() {
     if (entry.loading) {
       section.appendChild(html('<div class="spinner">Henter fra tinglysning.dk…</div>'));
     } else if (entry.error) {
-      section.appendChild(html(`<div style="color:#dc2626;padding:4px 0 10px">${entry.error}</div>`));
+      section.appendChild(html(`<div style="color:#dc2626;padding:4px 0 10px">${esc(entry.error)}</div>`));
     } else if (entry.data) {
       renderEntryCards(section, entry.data, entry.salesHistory);
       if (entry.salesLoading) {
@@ -582,18 +595,18 @@ function renderEntryCards(container, d, salesHistory) {
         <div class="card-title" style="color:#92400e">Andelsbolig / fællesejendom</div>
         <div style="font-size:13px;line-height:1.5">
           Den søgte adresse har ikke sin egen tingbog. Tingbogen nedenfor dækker
-          hele ejendommen (matrikel <strong>${fb.matrikelnr}</strong>,
-          ejerlav ${fb.ejerlavskode}), som typisk ejes af en andelsbolig\u00ADforening
+          hele ejendommen (matrikel <strong>${esc(fb.matrikelnr)}</strong>,
+          ejerlav ${esc(fb.ejerlavskode)}), som typisk ejes af en andelsbolig\u00ADforening
           eller almen boligorganisation.
-          ${fb.parent_adresse ? `Hovedadresse: <strong>${fb.parent_adresse}</strong>.` : ''}
+          ${fb.parent_adresse ? `Hovedadresse: <strong>${esc(fb.parent_adresse)}</strong>.` : ''}
         </div>
       </div>
     `));
   }
   container.appendChild(html(`
     <div class="card">
-      <div class="address-header">${d.adresse}</div>
-      <div class="property-type">${d.ejendomstype}</div>
+      <div class="address-header">${esc(d.adresse)}</div>
+      <div class="property-type">${esc(d.ejendomstype)}</div>
     </div>
   `));
 
@@ -602,7 +615,7 @@ function renderEntryCards(container, d, salesHistory) {
       <div class="card">
         <div class="card-title">Matrikler</div>
         <table>${d.matrikler.map(m => `
-          <tr><td>${m.matrikelnummer}</td><td>${m.landsejerlavnavn}</td></tr>
+          <tr><td>${esc(m.matrikelnummer)}</td><td>${esc(m.landsejerlavnavn)}</td></tr>
         `).join('')}</table>
       </div>
     `));
@@ -638,11 +651,11 @@ function renderEntryCards(container, d, salesHistory) {
     `;
     container.appendChild(html(`
       <div class="card">
-        <div class="card-title">Vurdering (${v.vurderingsdato})</div>
+        <div class="card-title">Vurdering (${esc(v.vurderingsdato)})</div>
         <table>
           <tr><td>Ejendomsværdi</td><td>${fmt(v.ejendomsvaerdi)} kr.</td></tr>
           <tr><td>Grundværdi</td><td>${fmt(v.grundvaerdi)} kr.</td></tr>
-          <tr><td>Kommune</td><td>${v.kommune}</td></tr>
+          <tr><td>Kommune</td><td>${esc(v.kommune)}</td></tr>
           ${debtRow}
         </table>
       </div>
@@ -654,7 +667,7 @@ function renderEntryCards(container, d, salesHistory) {
       <div class="card">
         <div class="card-title">Ejere</div>
         <table>${d.ejere.map(e => `
-          <tr><td>${e.andel}</td><td>${e.navn}</td></tr>
+          <tr><td>${esc(e.andel)}</td><td>${esc(e.navn)}</td></tr>
         `).join('')}</table>
       </div>
     `));
@@ -670,7 +683,7 @@ function renderEntryCards(container, d, salesHistory) {
     container.appendChild(html(`
       <div class="card">
         <div class="card-title">Servitutter</div>
-        ${d.servitutter.map(s => `<div class="easement">[${s.prioritet}] ${s.tekst}</div>`).join('')}
+        ${d.servitutter.map(s => `<div class="easement">[${esc(s.prioritet)}] ${esc(s.tekst)}</div>`).join('')}
       </div>
     `));
   }
@@ -688,7 +701,7 @@ function renderEntryCards(container, d, salesHistory) {
         <td>${shortDate(r.date)}</td>
         <td class="num">${fmt(r.amount)} kr.</td>
         <td class="num">${pricePerM2}</td>
-        <td>${r.typeLabel || ''}</td>
+        <td>${esc(r.typeLabel || '')}</td>
       </tr>`;
     }).join('');
     container.appendChild(html(`
@@ -714,21 +727,21 @@ function renderMortgage(h) {
 
   if (lti && isVariable) {
     if (lti.source === 'isin') {
-      badgeHtml = `<span class="loan-type-badge badge-certain">${lti.loan_type} (ISIN)</span>`;
+      badgeHtml = `<span class="loan-type-badge badge-certain">${esc(lti.loan_type)} (ISIN)</span>`;
     } else if (lti.source === 'estimated') {
       if (lti.uncertain) {
         badgeHtml = `<span class="loan-type-badge badge-uncertain">Usikker (lav rente — ældre lån?)</span>`;
       } else {
         const cls = lti.close_to?.length ? 'badge-close' : 'badge-certain';
-        const closeStr = lti.close_to?.length ? ` — tæt på ${lti.close_to.join(', ')}` : '';
-        badgeHtml = `<span class="loan-type-badge ${cls}">${lti.loan_type}${closeStr}</span>`;
+        const closeStr = lti.close_to?.length ? ` — tæt på ${esc(lti.close_to.join(', '))}` : '';
+        badgeHtml = `<span class="loan-type-badge ${cls}">${esc(lti.loan_type)}${closeStr}</span>`;
       }
 
       if (lti.candidates?.length) {
         const maxDelta = Math.max(...lti.candidates.map(c => c.delta));
         candidatesHtml = `<div class="candidates">${lti.candidates.map((c, i) => `
           <div class="candidate ${i === 0 ? 'best' : ''}">
-            <span>${c.name}</span>
+            <span>${esc(c.name)}</span>
             <span>Δ ${c.delta.toFixed(4)}%</span>
           </div>
           <div class="delta-bar-wrap"><div class="delta-bar" style="width:${maxDelta > 0 ? Math.round((1 - c.delta / maxDelta) * 100) : 100}%"></div></div>
@@ -740,11 +753,11 @@ function renderMortgage(h) {
   return html(`
     <div class="mortgage">
       <div class="mortgage-header">
-        <span class="mortgage-type">[${h.prioritet}] ${h.haeftelsestype}</span>
-        <span class="mortgage-amount">${h.hovedstol}</span>
+        <span class="mortgage-type">[${esc(h.prioritet)}] ${esc(h.haeftelsestype)}</span>
+        <span class="mortgage-amount">${esc(h.hovedstol)}</span>
       </div>
       <div class="mortgage-meta">
-        ${h.rente}% · ${isVariable ? 'variabel' : 'fast'}
+        ${esc(h.rente)}% · ${isVariable ? 'variabel' : 'fast'}
         ${creditors ? ' · ' + creditors : ''}
         ${regDate ? ' · ' + regDate : ''}
       </div>
@@ -767,6 +780,19 @@ function html(str) {
   const t = document.createElement('template');
   t.innerHTML = str.trim();
   return t.content.firstChild;
+}
+
+// HTML-escape helper. Use for anything that comes from upstream APIs
+// (owner names, addresses, easement texts, error messages from the
+// backend) or from localStorage before interpolating it into a
+// template literal. Prevents <, >, & and quote injection.
+function esc(s) {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 // ── Dark mode ─────────────────────────────────────────────────────────────
@@ -851,8 +877,8 @@ function renderHistory() {
   }
   historyDropdown.innerHTML = hist.map((h, i) => `
     <div class="history-entry" data-i="${i}">
-      <span class="history-label">${h.label}</span>
-      <span class="history-time">${timeAgo(h.ts)}</span>
+      <span class="history-label">${esc(h.label)}</span>
+      <span class="history-time">${esc(timeAgo(h.ts))}</span>
     </div>
   `).join('') + '<button class="history-clear" onclick="clearHistory()">Ryd historik</button>';
 

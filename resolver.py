@@ -14,6 +14,7 @@ mutate existing ones), so the TTL mainly protects against traffic spikes.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, asdict
 from typing import Any
 
@@ -22,6 +23,12 @@ from cachetools import TTLCache
 
 DAWA_AUTOCOMPLETE = "https://api.dataforsyningen.dk/autocomplete"
 DAWA_ADRESSER = "https://api.dataforsyningen.dk/adresser"
+
+# Matches a Danish house number: one or more digits, optional lowercase/uppercase
+# letter suffix (e.g. "12", "12A", "103a").
+_HUSNR_RE = re.compile(r"\b(\d{1,3}[A-Za-z]?)\b")
+# Matches a 4-digit postal code (1000-9999).
+_POSTNR_RE = re.compile(r"\b([1-9]\d{3})\b")
 
 # One hour is generous — DAWA addresses don't change mid-session.
 _RESOLVE_CACHE: TTLCache[str, "ResolvedAddress"] = TTLCache(maxsize=2048, ttl=3600)
@@ -73,11 +80,35 @@ def resolve(query: str) -> ResolvedAddress:
     """Resolve a freeform address to a `ResolvedAddress`, cached.
 
     Raises `ResolveError` if the query cannot be matched to a concrete
-    address (e.g. too vague, typo, non-existent street).
+    address (e.g. too vague, typo, non-existent street). We also reject
+    queries where the resolved result's postnr or husnr digits don't line
+    up with what the user typed — DAWA's fuzzy autocomplete happily
+    returns a plausible Danish address even for nonsense input, which
+    would otherwise surface completely unrelated tingbog data.
     """
     key = query.strip().lower()
+    if not key:
+        raise ResolveError(
+            "Tom søgning — skriv en adresse (gade, husnummer og postnummer)."
+        )
+    # Require at least a house number; without it we can't distinguish
+    # a specific property from the hundreds on a given street.
+    user_husnr_match = _HUSNR_RE.search(query)
+    user_postnr_match = _POSTNR_RE.search(query)
+    if not user_husnr_match:
+        raise ResolveError(
+            "Manglende husnummer — skriv fx 'Borgergade 12, 6752 Glejbjerg'."
+        )
+    user_husnr_digits = re.match(r"\d+", user_husnr_match.group(1)).group(0)
+    user_postnr = user_postnr_match.group(1) if user_postnr_match else None
+
     cached = _RESOLVE_CACHE.get(key)
     if cached is not None:
+        # Preserve the caller's original query verbatim so downstream
+        # logging / debugging is truthful about what was asked.
+        if cached.query != query:
+            from dataclasses import replace
+            return replace(cached, query=query)
         return cached
 
     # Step 1: autocomplete for fuzzy tolerance, to derive structured components.
@@ -186,6 +217,22 @@ def resolve(query: str) -> ResolvedAddress:
     if door:
         label += f" {door}"
     label += f", {postnr} {postnavn}"
+
+    # Sanity-check: DAWA's fuzzy autocomplete is eager — "<script>" or
+    # "Kvakkelørevej 9999, 9999 Blabla" both resolve to *some* Danish
+    # address. Reject anything whose house number or postal code does not
+    # line up with what the user actually typed.
+    resolved_husnr_digits = re.match(r"\d+", husnr).group(0) if husnr else ""
+    if resolved_husnr_digits != user_husnr_digits:
+        raise ResolveError(
+            f"Ingen adresse matcher '{query}'. DAWA's bedste gæt var "
+            f"{label!r}, men husnummeret stemmer ikke — tjek for stavefejl."
+        )
+    if user_postnr and postnr and user_postnr != postnr:
+        raise ResolveError(
+            f"Ingen adresse matcher '{query}'. DAWA's bedste gæt var "
+            f"{label!r}, men postnummeret stemmer ikke."
+        )
 
     resolved = ResolvedAddress(
         query=query,

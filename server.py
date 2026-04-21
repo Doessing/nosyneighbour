@@ -4,6 +4,7 @@ nosy-neighbour web server.
 Serves a map-based UI, a JSON REST API, and an MCP server at POST /mcp.
 """
 
+import copy
 import logging
 import os
 import subprocess
@@ -45,6 +46,9 @@ def _git_version() -> str:
         return "unknown"
 
 
+# Captured at import time. The service is always restarted on deploy
+# (see /opt/nosyneighbour/update.sh), so this is safe; if the process is
+# ever hot-reloaded in future, this needs to move into /api/version.
 _VERSION = _git_version()
 
 with open("templates/index.html") as f:
@@ -56,6 +60,10 @@ _index_html = f"<!-- version: {_VERSION} -->\n{_index_html}"
 
 
 def _annotate_loan_types(tingbog: dict) -> dict:
+    # Tingbog can come from _tingbog_cache, so deep-copy before mutating to
+    # avoid polluting the cached object with annotations whose format may
+    # change across releases.
+    tingbog = copy.deepcopy(tingbog)
     for h in tingbog.get("haeftelser") or []:
         rente = float(h.get("rente") or 0)
         if (h.get("fastvariabel") == "variabel"
@@ -131,7 +139,11 @@ app = FastAPI(title="nosy-neighbour", lifespan=lifespan)
 
 @app.get("/api/autocomplete")
 def autocomplete(q: str = Query(...)):
-    results = _client.autocomplete_address(q)
+    try:
+        results = _client.autocomplete_address(q)
+    except requests.RequestException as e:
+        log.warning("autocomplete upstream error: %s", e)
+        raise HTTPException(status_code=502, detail="DAWA unreachable")
     return [
         {
             "label": r["forslagstekst"],
@@ -148,9 +160,22 @@ def autocomplete(q: str = Query(...)):
 
 @app.get("/api/reverse")
 def reverse(lat: float = Query(...), lng: float = Query(...)):
-    resp = requests.get(DAWA_REVERSE_URL, params={"x": lng, "y": lat})
+    # maks_afstand is in metres; 500 m keeps ocean clicks and
+    # cross-border clicks from silently resolving to a distant address.
+    try:
+        resp = requests.get(
+            DAWA_REVERSE_URL,
+            params={"x": lng, "y": lat, "maks_afstand": 500},
+            timeout=10,
+        )
+    except requests.RequestException as e:
+        log.warning("reverse upstream error: %s", e)
+        raise HTTPException(status_code=502, detail="DAWA unreachable")
     if resp.status_code == 404:
-        raise HTTPException(status_code=404, detail="No address found at this location")
+        raise HTTPException(
+            status_code=404,
+            detail="Ingen adresse inden for 500 m af det valgte punkt.",
+        )
     resp.raise_for_status()
     d = resp.json()
     return {
