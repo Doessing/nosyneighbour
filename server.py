@@ -11,7 +11,7 @@ import subprocess
 from contextlib import asynccontextmanager
 
 import requests
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Response
 from fastapi.responses import HTMLResponse
 from mcp.server.fastmcp import FastMCP
 import uvicorn
@@ -264,6 +264,33 @@ def resolve_endpoint(q: str = Query(...)):
 @app.get("/", response_class=HTMLResponse)
 def index():
     return HTMLResponse(content=_index_html)
+
+
+# Cheeky little globe with glasses — served inline so we don't have to add
+# a binary asset to the repo. SVG is fine for favicons in all modern browsers.
+_FAVICON_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <circle cx="32" cy="32" r="28" fill="#4a90d9"/>
+  <path d="M8 32h48M32 6c8 7 8 45 0 52M32 6c-8 7-8 45 0 52M12 18c6 4 34 4 40 0M12 46c6-4 34-4 40 0"
+        fill="none" stroke="#2e7d32" stroke-width="2" opacity="0.55"/>
+  <path d="M6 34c5-5 10-5 14 0M24 34c2-3 6-3 8 0M46 34c4-5 9-5 12 0"
+        fill="#a8d8a8" opacity="0.7"/>
+  <g transform="translate(0,4)">
+    <circle cx="22" cy="30" r="8" fill="none" stroke="#1a1a1a" stroke-width="3"/>
+    <circle cx="42" cy="30" r="8" fill="none" stroke="#1a1a1a" stroke-width="3"/>
+    <path d="M30 30h4" stroke="#1a1a1a" stroke-width="3" stroke-linecap="round"/>
+    <path d="M14 28l-5-2M50 28l5-2" stroke="#1a1a1a" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="22" cy="30" r="6" fill="#ffffff" opacity="0.85"/>
+    <circle cx="42" cy="30" r="6" fill="#ffffff" opacity="0.85"/>
+    <circle cx="23" cy="31" r="1.6" fill="#1a1a1a"/>
+    <circle cx="43" cy="31" r="1.6" fill="#1a1a1a"/>
+  </g>
+</svg>"""
+
+
+@app.get("/favicon.ico")
+@app.get("/favicon.svg")
+def favicon():
+    return Response(content=_FAVICON_SVG, media_type="image/svg+xml")
 
 
 @app.get("/api/version")
