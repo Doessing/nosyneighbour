@@ -487,6 +487,7 @@ async function addAddress(label, lat, lng) {
   const entry = { label, lat, lng, data: null, error: null, loading: true, marker, salesHistory: null, salesLoading: true };
   entries.push(entry);
   renderSidebar();
+  scrollToEntry(idx);
 
   try {
     const res = await fetch(`/api/lookup?q=${encodeURIComponent(label)}`);
@@ -503,7 +504,6 @@ async function addAddress(label, lat, lng) {
   }
   entry.loading = false;
   renderSidebar();
-  scrollToEntry(idx);
 
   // Fetch sales history in the background; re-render when done.
   fetch(`/api/sales-history?q=${encodeURIComponent(label)}`)
